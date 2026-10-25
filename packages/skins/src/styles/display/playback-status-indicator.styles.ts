@@ -24,6 +24,7 @@ export default styles({
       variants: {
         // On touch, the default skin's centre play button shows the playback state instead.
         default: 'rounded-media-pill bg-media-backdrop/35 backdrop-filter-media-indicator pointer-coarse:hidden!',
+        neutral: 'filter-media-feedback',
       },
     },
     playIcon: {

@@ -5,7 +5,13 @@ import type { Constructor, MixinReturn } from '@videojs/utils/types';
 import type { Composition } from '../../../core/composition/create-composition';
 import { effect } from '../../../core/signals/effect';
 import { DEFAULT_KEY_SYSTEMS } from '../../../media/dom/key-systems';
-import { type DrmSystemsConfig, type KeySystemModule, sourceDrmSystems } from '../../../media/drm';
+import {
+  type DrmSystemsConfig,
+  type DrmSystemsConfigFor,
+  type KeySystemId,
+  type KeySystemModule,
+  sourceDrmSystems,
+} from '../../../media/drm';
 import {
   SVTA_NO_SUPPORTED_AUDIO_TRACK,
   SVTA_NO_SUPPORTED_VIDEO_TRACK,
@@ -22,13 +28,8 @@ import {
 } from '../../../media/types';
 import { findTrackById } from '../../../media/utils/tracks';
 import { crossOriginToRequestCredentials } from '../../../network/request-credentials';
-import {
-  createHlsVideoEngine,
-  type HlsVideoEngineConfig,
-  type HlsVideoEngineContext,
-  type HlsVideoEngineSignals,
-  type HlsVideoEngineState,
-} from '../../engines/hls/engine';
+import { resolveSourceUrl } from '../../../network/resolve-source-url';
+import { createEngine, type EngineConfig, type EngineContext, type EngineState } from '../../engines/hls-video';
 import {
   DVR_EXPERIMENTAL_MESSAGE,
   LOW_LATENCY_UNSUPPORTED_MESSAGE,
@@ -79,18 +80,21 @@ export interface HlsVideoSource {
 export type HlsVideoAdapterOptions =
   | {
       /**
-       * Engine config forwarded to `createHlsVideoEngine`. Its `drm` merges over the license servers derived from the
-       * current `source.drm`, so an entry here names a server the source does not. With no `keySystems`, `drm` is keyed
-       * by the default systems' ids.
+       * Engine config forwarded to `createEngine`. Its `drm` merges over the license servers derived from the current
+       * `source.drm`, so an entry here names a server the source does not. With no `keySystems`, `drm` is keyed by the
+       * default systems' ids.
        */
-      config?: HlsVideoEngineConfig;
+      config?: Omit<EngineConfig, 'drm' | 'keySystems'> & {
+        drm?: DrmSystemsConfigFor<KeySystemId<typeof DEFAULT_KEY_SYSTEMS>>;
+        keySystems?: undefined;
+      };
     }
   | {
       /**
-       * The same, with `keySystems` narrowed. A constructor cannot be generic per call the way `createHlsVideoEngine`
-       * is, so `drm` is keyed by any id here; the engine still negotiates only what `keySystems` composes.
+       * The same, with `keySystems` narrowed. A constructor cannot be generic per call the way `createEngine` is, so
+       * `drm` is keyed by any id here; the engine still negotiates only what `keySystems` composes.
        */
-      config: HlsVideoEngineConfig<readonly KeySystemModule[]> & { keySystems: readonly KeySystemModule[] };
+      config: EngineConfig & { keySystems: readonly KeySystemModule[] };
     };
 
 export interface HlsVideoAdapterProps {
@@ -108,7 +112,7 @@ export interface HlsVideoAdapterProps {
 }
 
 export interface HlsVideoAdapterAPI extends HlsVideoAdapterProps {
-  readonly engine: Composition<HlsVideoEngineState, HlsVideoEngineContext>;
+  readonly engine: Composition<EngineState, EngineContext>;
   readonly error: HlsVideoMediaError | null;
   readonly liveEdgeStart: number;
   readonly targetLiveWindow: number;
@@ -189,6 +193,12 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
     };
 
     /**
+     * Engine this media plays through, reported to analytics such as Mux Data. Names the SPF engine entry point it
+     * composes (`@videojs/spf/engines/hls-video`), since each SPF engine is its own composition.
+     */
+    static readonly engineName: string = 'spf-hls-video';
+
+    /**
      * A complete sentence naming the Media to reach for when this one can't play a source — `Try the hls.js-backed Mux
      * media instead: import the hls-js flavor in place of the spf one.` Appended to the copy this adapter surfaces, and
      * to the notices it logs. Name the flavor, not an import path: a Media is reached through several packages, each
@@ -202,9 +212,8 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       return undefined;
     }
 
-    readonly #engine: Composition<HlsVideoEngineState, HlsVideoEngineContext>;
-    #config: HlsVideoEngineConfig<readonly KeySystemModule[]>;
-    #signals!: HlsVideoEngineSignals;
+    readonly #engine: Composition<EngineState, EngineContext>;
+    #config: EngineConfig;
     #preload: '' | 'none' | 'metadata' | 'auto' = HlsVideoImpl.defaultProps.preload;
     #crossOrigin: MediaCrossOriginType | null = toMediaCrossOrigin(HlsVideoImpl.defaultProps.crossOrigin);
     #disableRemotePlayback: boolean = HlsVideoImpl.defaultProps.disableRemotePlayback;
@@ -257,10 +266,10 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       // NOT cached here — it's derived at read time (the store re-reads it on
       // `timeupdate`/`progress`), so a sliding window needs no event churn.
       this.#stopLiveSync = effect(() => {
-        const presentation = this.#signals.state.presentation.get();
+        const presentation = this.#engine.state.presentation.get();
 
         this.#setDetectedStreamType(presentation?.streamType ?? MediaStreamTypes.UNKNOWN);
-        this.#setTargetLiveWindow(deriveTargetLiveWindow(presentation, liveTrackId(this.#signals.state)));
+        this.#setTargetLiveWindow(deriveTargetLiveWindow(presentation, liveTrackId(this.#engine.state)));
         this.#reportDeliveryNotices(presentation);
       });
 
@@ -269,7 +278,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       // resets the slot per source, so a new source starts with no error without
       // this needing its own source-change hook.
       this.#stopErrorSync = effect(() => {
-        const errors = this.#signals.state.errors.get();
+        const errors = this.#engine.state.errors.get();
 
         this.#setError(firstFatal(errors, FATAL_SVTA_CODES), errors);
       });
@@ -279,7 +288,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
      * Underlying playback engine — the low-level SPF reactive composition that drives playback. An advanced escape
      * hatch for direct engine access; normal playback is driven through this element's own properties and methods.
      */
-    get engine(): Composition<HlsVideoEngineState, HlsVideoEngineContext> {
+    get engine(): Composition<EngineState, EngineContext> {
       return this.#engine;
     }
 
@@ -310,7 +319,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
     set streamType(value: HlsVideoMediaStreamType) {
       if (value === MediaStreamTypes.UNKNOWN) {
         this.#isUserStreamType = false;
-        this.#updateStreamType(this.#signals.state.presentation.get()?.streamType ?? MediaStreamTypes.UNKNOWN);
+        this.#updateStreamType(this.#engine.state.presentation.get()?.streamType ?? MediaStreamTypes.UNKNOWN);
         return;
       }
 
@@ -326,7 +335,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
      */
     get liveEdgeStart(): number {
       const edge = getLiveEdge({
-        state: this.#signals.state as LiveWindowState,
+        state: this.#engine.state as LiveWindowState,
         config: { resolveLiveLatency },
       });
 
@@ -406,12 +415,12 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
     // -------------------------------------------------------------------------
 
     attach(mediaElement: HTMLMediaElement): void {
-      if (mediaElement !== this.#signals.context.mediaElement.get()) {
+      if (mediaElement !== this.#engine.context.mediaElement.get()) {
         this.#cancelPendingPlay();
       }
 
       super.attach?.(mediaElement);
-      this.#signals.context.mediaElement.set(mediaElement);
+      this.#engine.context.mediaElement.set(mediaElement);
 
       // Most-recent-wins on attach, as with `preload`: an element authored with
       // `crossorigin` (a React-rendered `<video>`, a standalone attach) is the
@@ -422,7 +431,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
 
     detach(): void {
       this.#cancelPendingPlay();
-      this.#signals.context.mediaElement.set(undefined);
+      this.#engine.context.mediaElement.set(undefined);
       super.detach?.();
     }
 
@@ -446,7 +455,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       this.#preload = value;
 
       if (value) {
-        this.#signals.state.preload.set(value);
+        this.#engine.state.preload.set(value);
       }
       // value = '' resets the IDL mirror (so `get preload` reflects '') but does
       // not patch state — the engine keeps its current preload until an explicit
@@ -475,7 +484,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       // canonical keyword. A custom element hands the raw attribute string here.
       this.#crossOrigin = toMediaCrossOrigin(value);
 
-      const mediaElement = this.#signals.context.mediaElement.get();
+      const mediaElement = this.#engine.context.mediaElement.get();
 
       if (mediaElement) mediaElement.crossOrigin = value;
     }
@@ -496,7 +505,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
 
     set disableRemotePlayback(value: boolean) {
       this.#disableRemotePlayback = value;
-      this.#signals.state.disableRemotePlayback.set(value);
+      this.#engine.state.disableRemotePlayback.set(value);
     }
 
     // -------------------------------------------------------------------------
@@ -510,20 +519,25 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
     // -------------------------------------------------------------------------
 
     get src(): string {
-      return this.#signals.state.presentation.get()?.url ?? '';
+      return this.#engine.state.presentation.get()?.url ?? '';
     }
 
     set src(value: string) {
+      // Resolved against the runtime's base URL before anything compares or
+      // stores it, as `<video src>` is against the node document: `src` reads
+      // back absolute, and a relative URL names the same asset as its absolute
+      // form. The engine only ever sees the resolved URL.
+      const url = resolveSourceUrl(value);
       // Guarded on the URL rather than on source identity: the presentation can
       // also be written straight to the engine, and clearing `src` has to reach
       // it either way.
-      if (value === this.src) return;
+      if (url === this.src) return;
 
       // A bare URL names a different asset, so whatever the previous source said
       // about licensing it no longer applies — same line the Mux flavor draws
       // when a URL replaces a structured source.
-      this.#source = value ? { src: value } : null;
-      this.#applySrc(value);
+      this.#source = url ? { src: url } : null;
+      this.#applySrc(url);
       this.dispatchEvent?.(new Event('sourcechange'));
     }
 
@@ -553,10 +567,13 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
      * changing only the licensing half of a source would otherwise cause.
      */
     #applySrc(value: string): void {
-      if (value === this.src) return;
+      // Resolved here as well as in the `src` setter: `source` hands its URL
+      // straight through, and resolving an absolute URL is the identity.
+      const url = resolveSourceUrl(value);
+      if (url === this.src) return;
 
       this.#cancelPendingPlay();
-      this.#signals.state.presentation.set(value ? { url: value } : undefined);
+      this.#engine.state.presentation.set(url ? { url } : undefined);
     }
 
     // -------------------------------------------------------------------------
@@ -565,13 +582,13 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
     // -------------------------------------------------------------------------
 
     play(): Promise<void> {
-      const mediaElement = this.#signals.context.mediaElement.get();
+      const mediaElement = this.#engine.context.mediaElement.get();
       if (!mediaElement) return Promise.reject(new Error('HlsVideoAdapterCore: no media element attached'));
 
       const { signal } = this.#playGeneration;
 
       // Signal play intent — enables loading even with preload="none"
-      this.#signals.state.loadActivated.set(true);
+      this.#engine.state.loadActivated.set(true);
 
       return mediaElement.play().catch((err: unknown) => {
         signal.throwIfAborted();
@@ -614,7 +631,7 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
         return;
       }
 
-      const trackId = liveTrackId(this.#signals.state);
+      const trackId = liveTrackId(this.#engine.state);
       const track = trackId ? findTrackById(presentation, trackId) : undefined;
       if (!track || !isResolvedTrack(track)) return;
 
@@ -632,16 +649,13 @@ export function HlsVideoMixin<Base extends Constructor<any>>(BaseClass: Base) {
       }
     }
 
-    #createEngine(): Composition<HlsVideoEngineState, HlsVideoEngineContext> {
-      return createHlsVideoEngine({
+    #createEngine(): Composition<EngineState, EngineContext> {
+      return createEngine({
         ...this.#config,
         // A policy, not a value: the engine outlives `crossOrigin` changes and
         // consults this on every request. A consumer-supplied policy wins.
         requestCredentials:
           this.#config?.requestCredentials ?? (() => crossOriginToRequestCredentials(this.#crossOrigin)),
-        onSignalsReady: (signals) => {
-          this.#signals = signals;
-        },
       });
     }
 
