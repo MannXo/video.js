@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [@videojs/core@10.3.0] - 2026-10-26
+
+### 🚀 Features
+- *(mux-data)* Report framework and engine in the player software name ([#9577](https://github.com/videojs/video.js/pull/9577)) by [@luwes](https://github.com/luwes)
+- *(core)* Hide playback rate controls when the media has no playback rate ([#9603](https://github.com/videojs/video.js/pull/9603)) by [@luwes](https://github.com/luwes)
+
+### 🐛 Bug Fixes
+- *(site)* Report the deployed branch in the sandbox copy-report on vercel ([#9550](https://github.com/videojs/video.js/pull/9550)) by [@cjpillsbury](https://github.com/cjpillsbury)
+- *(mux-data)* Monitor the HLS background video ([#9581](https://github.com/videojs/video.js/pull/9581)) by [@cjpillsbury](https://github.com/cjpillsbury)
+- *(spf)* Resolve a relative source URL in the HLS adapters ([#9587](https://github.com/videojs/video.js/pull/9587)) by [@cjpillsbury](https://github.com/cjpillsbury)
+- *(react)* Leave pointer events to the skin over chromeless embeds ([#9601](https://github.com/videojs/video.js/pull/9601)) by [@luwes](https://github.com/luwes)
+- *(core)* Keep embeds from taking a volume the browser locks ([#9602](https://github.com/videojs/video.js/pull/9602)) by [@luwes](https://github.com/luwes)
+- *(installation)* Pass Mux URLs to React Mux media as a structured source ([#9605](https://github.com/videojs/video.js/pull/9605)) by [@decepulis](https://github.com/decepulis)
+- *(skin)* Lighten the video controls backdrop ([#9585](https://github.com/videojs/video.js/pull/9585)) by [@sampotts](https://github.com/sampotts)
+- *(html)* Keep the playback rate menu trigger visible once rates are available ([#9624](https://github.com/videojs/video.js/pull/9624)) by [@sampotts](https://github.com/sampotts)
+- *(core)* Hide open popovers before entering fullscreen ([#9627](https://github.com/videojs/video.js/pull/9627)) by [@sampotts](https://github.com/sampotts)
+
+### 🚜 Refactor
+- *(spf)* Import svta error codes from @svta/cml-error-codes ([#9579](https://github.com/videojs/video.js/pull/9579)) by [@cjpillsbury](https://github.com/cjpillsbury)
+
+### 📚 Documentation
+- *(site)* Add skin choice guidance ([#9474](https://github.com/videojs/video.js/pull/9474)) by [@mihar-22](https://github.com/mihar-22)
+- *(site)* Add changelog prose for 10.2.0 ([#9574](https://github.com/videojs/video.js/pull/9574)) by [@github-actions[bot]](https://github.com/github-actions[bot])
+
 ## [@videojs/core@10.2.0] - 2026-10-22
 
 ### 🚀 Features
@@ -2382,6 +2406,7 @@ All notable changes to this project will be documented in this file.
 * @decepulis made their first contribution in [#118](https://github.com/videojs/v10/pull/118)
 * @heff made their first contribution
 
+[@videojs/core@10.3.0]: https://github.com/videojs/video.js/compare/@videojs/core@10.2.0...@videojs/core@10.3.0
 [@videojs/core@10.2.0]: https://github.com/videojs/video.js/compare/@videojs/core@10.1.0...@videojs/core@10.2.0
 [@videojs/core@10.1.0]: https://github.com/videojs/video.js/compare/@videojs/core@10.0.1...@videojs/core@10.1.0
 [@videojs/core@10.0.1]: https://github.com/videojs/v10/compare/@videojs/core@10.0.0...@videojs/core@10.0.1
