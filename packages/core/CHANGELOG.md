@@ -1,5 +1,28 @@
 # Changelog
 
+## [10.3.0](https://github.com/videojs/video.js/compare/@videojs/core@10.2.0...@videojs/core@10.3.0) (2026-10-26)
+
+
+### Features
+
+* **core:** hide playback rate controls when the media has no playback rate ([#9603](https://github.com/videojs/video.js/issues/9603)) ([6f5e053](https://github.com/videojs/video.js/commit/6f5e053c5ec488f9adc33781d2be682979e826a8))
+
+
+### Bug Fixes
+
+* **core:** hide open popovers before entering fullscreen ([#9627](https://github.com/videojs/video.js/issues/9627)) ([1e2291c](https://github.com/videojs/video.js/commit/1e2291c7da0839471e10422a066e56480609a925))
+* **core:** keep embeds from taking a volume the browser locks ([#9602](https://github.com/videojs/video.js/issues/9602)) ([9b115eb](https://github.com/videojs/video.js/commit/9b115eb2178d37597e6e7a7459c41018946d1a1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.3.0
+    * @videojs/store bumped to 10.3.0
+    * @videojs/utils bumped to 10.3.0
+    * video.js bumped to 10.3.0
+
 ## [10.2.0](https://github.com/videojs/video.js/compare/@videojs/core@10.1.0...@videojs/core@10.2.0) (2026-10-22)
 
 

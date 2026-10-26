@@ -1,5 +1,23 @@
 # Changelog
 
+## [10.3.0](https://github.com/videojs/video.js/compare/@videojs/skins@10.2.0...@videojs/skins@10.3.0) (2026-10-26)
+
+
+### Bug Fixes
+
+* **skin:** lighten the video controls backdrop ([#9585](https://github.com/videojs/video.js/issues/9585)) ([ecaab1c](https://github.com/videojs/video.js/commit/ecaab1c99f12c07cf3d2cae56ed524fcc86275af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @videojs/core bumped to 10.3.0
+    * @videojs/element bumped to 10.3.0
+    * @videojs/icons bumped to 10.3.0
+    * @videojs/installation bumped to 10.3.0
+    * @videojs/utils bumped to 10.3.0
+
 ## [10.2.0](https://github.com/videojs/video.js/compare/@videojs/skins@10.1.0...@videojs/skins@10.2.0) (2026-10-22)
 
 
